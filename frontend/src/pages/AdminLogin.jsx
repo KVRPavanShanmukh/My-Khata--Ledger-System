@@ -87,7 +87,7 @@ function AdminLogin() {
 
   return (
     <div className="auth-container">
-      <h2>Admin Login to MyKhata</h2>
+      <h2>Admin Login to OmniBank</h2>
       {error && <p className="error-message">{error}</p>}
       {successMessage && <p className="success-message">{successMessage}</p>}
 

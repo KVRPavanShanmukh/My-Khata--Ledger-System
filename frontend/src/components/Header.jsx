@@ -6,7 +6,7 @@ function Header() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    // Only logout when clicking Logout button, not MyKhata logo
+    // Only logout when clicking Logout button, not OmniBank logo
     localStorage.removeItem('authToken');
     navigate('/');
   };
@@ -20,7 +20,7 @@ function Header() {
     <header className="header">
       <div className="header-container">
         {/* Logo should just navigate to /user, not logout */}
-        <Link to="/user" className="logo">MyKhata</Link>
+        <Link to="/user" className="logo">OmniBank</Link>
         {!hideNav && (
           <nav>
             <ul>
