@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -27,20 +27,18 @@ public class AuthController {
     private UserService userService;
 
     @Autowired
-    private BCryptPasswordEncoder passwordEncoder;
+    private PasswordEncoder passwordEncoder;
 
-    @PostMapping("/signup")
-    public ResponseEntity<?> signup(@RequestBody User user) {
+    @Autowired
+    private SignupVerificationService signupVerificationService;
+
+    @PostMapping("/signup/request-code")
+    public ResponseEntity<?> requestSignupCode(@RequestBody User user) {
         logger.info("Received signup request for mobile: {}", user.getMobile());
 
         try {
-            user.setPassword(passwordEncoder.encode(user.getPassword()));
-
-            User savedUser = userService.saveUser(user);
-            savedUser.setPassword(null);
-
-            logger.info("User saved successfully with mobile: {}", savedUser.getMobile());
-            return ResponseEntity.ok(savedUser);
+            signupVerificationService.requestCode(user);
+            return ResponseEntity.ok(Map.of("message", "Verification code sent to your email"));
 
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -50,6 +48,41 @@ public class AuthController {
 
         } catch (Exception e) {
             logger.error("Server error in signup: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Server error", "error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/signup/verify")
+    public ResponseEntity<?> verifySignup(@RequestBody Map<String, String> request) {
+        try {
+            User savedUser = signupVerificationService.verifyCode(request.get("email"), request.get("code"));
+            return ResponseEntity.ok(savedUser);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (DataIntegrityViolationException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Email or mobile number already exists"));
+        } catch (Exception e) {
+            logger.error("Server error while verifying signup", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Server error", "error", e.getMessage()));
+        }
+    }
+
+    // Kept for the admin dashboard's customer-creation workflow.
+    @PostMapping("/signup")
+    public ResponseEntity<?> adminSignup(@RequestBody User user) {
+        try {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+            User savedUser = userService.saveUser(user);
+            savedUser.setPassword(null);
+            return ResponseEntity.ok(savedUser);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (DataIntegrityViolationException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Email or mobile number already exists"));
+        } catch (Exception e) {
+            logger.error("Server error while creating admin customer", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Server error", "error", e.getMessage()));
         }

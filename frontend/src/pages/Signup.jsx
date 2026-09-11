@@ -13,6 +13,9 @@ function Signup({ setUser }) {
   });
 
   const [error, setError] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const calculateAge = (dob) => {
@@ -44,25 +47,32 @@ function Signup({ setUser }) {
     const age = calculateAge(dob);
     if (age < 18) return setError('You must be 18 or older to register');
 
+    setError('');
+    setIsSubmitting(true);
+
     try {
-      const response = await axios.post('http://localhost:1014/api/auth/signup', {
-        ...form,
-        age,
+      if (!verificationSent) {
+        await axios.post('http://localhost:1014/api/auth/signup/request-code', {
+          ...form,
+          age,
+        });
+        setVerificationSent(true);
+        return;
+      }
+
+      const response = await axios.post('http://localhost:1014/api/auth/signup/verify', {
+        email: form.email,
+        code: verificationCode,
       });
 
-      console.log('Signup successful:', response.data);
-
-      // Optional: save user
       if (typeof setUser === 'function') setUser(response.data);
-
-      // ✅ Show success alert
       alert('Registration successful! Please login.');
-
-      // ✅ Redirect to login page
       navigate('/');
     } catch (err) {
-      setError(err.response?.data || err.message);
+      setError(err.response?.data?.message || err.message);
       console.error('Signup failed:', err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -106,7 +116,25 @@ function Signup({ setUser }) {
             max={new Date().toISOString().split('T')[0]}
           />
         </div>
-        <button type="submit" className="btn-primary">Sign Up</button>
+        {verificationSent && (
+          <div className="form-group">
+            <label htmlFor="verificationCode">Email verification code</label>
+            <input
+              id="verificationCode"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength="6"
+              value={verificationCode}
+              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+              placeholder="Enter the 6-digit code from your email"
+              required
+            />
+          </div>
+        )}
+        <button type="submit" className="btn-primary" disabled={isSubmitting}>
+          {isSubmitting ? 'Sending...' : verificationSent ? 'Verify email and sign up' : 'Send email code'}
+        </button>
       </form>
       <p>Already have an account? <a href="/">Login</a></p>
     </div>
