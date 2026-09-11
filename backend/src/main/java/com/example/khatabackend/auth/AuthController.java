@@ -32,6 +32,9 @@ public class AuthController {
     @Autowired
     private SignupVerificationService signupVerificationService;
 
+    @Autowired
+    private LoginVerificationService loginVerificationService;
+
     @PostMapping("/signup/request-code")
     public ResponseEntity<?> requestSignupCode(@RequestBody User user) {
         logger.info("Received signup request for mobile: {}", user.getMobile());
@@ -93,8 +96,8 @@ public class AuthController {
         logger.info("Received login request for mobile: {}", user.getMobile());
 
         try {
-            if (user == null || user.getMobile() == null || user.getPassword() == null) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Mobile and password required"));
+            if (user == null || user.getMobile() == null || user.getPassword() == null || user.getEmail() == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Mobile, email, and password required"));
             }
 
             Optional<User> optionalUser = userService.findByMobile(user.getMobile());
@@ -111,17 +114,38 @@ public class AuthController {
                         .body(Map.of("message", "Invalid mobile number or password"));
             }
 
+            if (!existingUser.getEmail().equalsIgnoreCase(user.getEmail().trim())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("message", "Email does not match registered email"));
+            }
+
+            // Send OTP to email
+            loginVerificationService.requestCode(existingUser);
+
             Map<String, String> response = new HashMap<>();
             response.put("mobile", existingUser.getMobile());
-            response.put("name", existingUser.getName());
-            response.put("email", existingUser.getEmail());
-            response.put("message", "Phone and password verified, please proceed with OTP");
+            response.put("message", "Phone and password verified, OTP sent to email");
 
-            logger.info("Login successful for mobile: {}", user.getMobile());
+            logger.info("Login pre-auth successful for mobile: {}, OTP sent", user.getMobile());
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             logger.error("Error during login for mobile: {}", user.getMobile(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Server error", "error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/login/verify")
+    public ResponseEntity<?> verifyLogin(@RequestBody Map<String, String> request) {
+        try {
+            User loggedInUser = loginVerificationService.verifyCode(request.get("mobile"), request.get("code"));
+            loggedInUser.setPassword(null);
+            return ResponseEntity.ok(loggedInUser);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("Server error while verifying login", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Server error", "error", e.getMessage()));
         }

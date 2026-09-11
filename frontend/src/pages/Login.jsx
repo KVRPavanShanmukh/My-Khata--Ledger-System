@@ -4,14 +4,13 @@ import axios from 'axios';
 
 function Login({ setUser }) {
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isOtpSent, setIsOtpSent] = useState(false);
-  const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [dummyOtp, setDummyOtp] = useState(''); // Store the generated dummy OTP
   const navigate = useNavigate();
 
   const handlePhonePasswordSubmit = async (e) => {
@@ -26,6 +25,12 @@ function Login({ setUser }) {
       return;
     }
 
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
+      setError('A valid email address is required');
+      setLoading(false);
+      return;
+    }
+
     if (!password.trim()) {
       setError('Password is required');
       setLoading(false);
@@ -33,68 +38,71 @@ function Login({ setUser }) {
     }
 
     try {
-      // Use axios to validate phone and password with the backend
-      const response = await axios.post('http://localhost:1014/api/auth/login', {
+      await axios.post('http://localhost:1014/api/auth/login', {
         mobile: phone,
-        password,
+        email: email,
+        password: password,
       });
 
-      setUserData(response.data);
       setIsOtpSent(true);
-
-      // Generate a dummy OTP locally (no axios call)
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
-      setDummyOtp(generatedOtp);
-      setSuccessMessage(`(Captcha: ${generatedOtp})`);
+      setSuccessMessage('OTP sent to your email.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Check phone and password.');
+      setError(err.response?.data?.message || 'Login failed. Check phone, email, and password.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOtpSubmit = (e) => {
+  const handleOtpSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccessMessage('');
     setLoading(true);
 
     if (!otp.trim() || otp.length !== 6) {
-      setError('Enter a valid 6-digit Captcha');
+      setError('Enter a valid 6-digit OTP');
       setLoading(false);
       return;
     }
 
-    // Verify OTP locally (no axios call)
-    setTimeout(() => {
-      if (otp !== dummyOtp) {
-        setError('Invalid Captcha. Please try again.');
-        setLoading(false);
-        return;
-      }
+    try {
+      const response = await axios.post('http://localhost:1014/api/auth/login/verify', {
+        mobile: phone,
+        code: otp
+      });
 
       setSuccessMessage('Login successful! Redirecting to dashboard...');
       if (setUser) {
-        setUser(userData);
+        setUser(response.data);
       }
       setTimeout(() => {
         navigate('/user');
       }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid or expired OTP. Please try again.');
+    } finally {
       setLoading(false);
-    }, 1000); // Simulate a 1-second delay for "network" request
+    }
   };
 
-  const handleResendOtp = () => {
+  const handleResendOtp = async () => {
     setError('');
     setSuccessMessage('');
     setLoading(true);
 
-    setTimeout(() => {
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setDummyOtp(generatedOtp);
-      setSuccessMessage(`OTP resent to: ${phone} (Dummy OTP: ${generatedOtp})`);
+    try {
+      await axios.post('http://localhost:1014/api/auth/login', {
+        mobile: phone,
+        email: email,
+        password: password,
+      });
+
+      setSuccessMessage('OTP resent to your email.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to resend OTP.');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -119,6 +127,17 @@ function Login({ setUser }) {
             />
           </div>
           <div className="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your registered email"
+              required
+              disabled={loading}
+            />
+          </div>
+          <div className="form-group">
             <label>Password</label>
             <input
               type="password"
@@ -136,12 +155,12 @@ function Login({ setUser }) {
       ) : (
         <form onSubmit={handleOtpSubmit}>
           <div className="form-group">
-            <label>Enter Captcha</label>
+            <label>Enter OTP</label>
             <input
               type="text"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
-              placeholder="Enter the 6-digit captcha"
+              placeholder="Enter the 6-digit OTP"
               maxLength={6}
               required
               pattern="[0-9]{6}"
